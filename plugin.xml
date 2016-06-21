@@ -23,8 +23,7 @@
         <source-file src="src/android/mobsms.java" target-dir="src/com/jlg/mobsms" />
         <source-file src="src/android/MobCommons-2016.0303.1229.jar" target-dir="libs" />
         <source-file src="src/android/MobTools-2016.0303.1229.jar" target-dir="libs" />
-        <source-file src="src/android/SMSSDK-2.0.2.aar" target-dir="libs" />
-        <source-file src="src/android/SMSSDKGUI-2.0.2.aar" target-dir="libs" />
+        <source-file src="src/android/SMSSDK-2.0.2.jar" target-dir="libs" />
     </platform>
 
 
