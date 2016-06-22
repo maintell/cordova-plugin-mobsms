@@ -38,7 +38,8 @@ function handlers() {
 
 Mobsms.RequestVerifyCode = function(phone)
   {
-       exec(mobsms._requestcodeCallback, mobsms._error, "mobsms", "RequestVerifyCode", [phone]);
+         alert(2);
+       //exec(mobsms._requestcodeCallback, mobsms._error, "mobsms", "RequestVerifyCode", [phone]);
   }
 
   Mobsms.prototype._requestcodeCallback = function (info) {
