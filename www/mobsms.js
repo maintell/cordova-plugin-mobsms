@@ -89,7 +89,7 @@ mobsms.prototype.SubmitVerifyCode = function(successCallback, errorCallback, Ver
         return;
     }
 
-    exec(successCallback, errorCallback, 'mobsms', 'RequestVerifyCode', [{VerifyCode: VerifyCode}]);
+    exec(successCallback, errorCallback, 'mobsms', 'SubmitVerifyCode', [{VerifyCode: VerifyCode}]);
 };
 
 
