@@ -146,12 +146,7 @@ public class mobsms extends CordovaPlugin {
                 PhoneNumber = jo.getString("PhoneNumber");
                 Log.v(LOG_TAG, " excute RequestVerifyCode: PhoneNumber=" + PhoneNumber);
                 SMSSDK.getVerificationCode("86",PhoneNumber);
-                JSONObject obj = new JSONObject();
-                obj.put("status",-1);
-                obj.put("message", "Request Sended");
-                PluginResult result = new PluginResult(PluginResult.Status.OK, obj);
-                result.setKeepCallback(true);
-                callbackContext.sendPluginResult(result);
+                return true;
             } catch (JSONException e) {
                 Log.e(LOG_TAG, "execute: Got JSON Exception " + e.getMessage());
                 callbackContext.error(e.getMessage());
@@ -164,12 +159,7 @@ public class mobsms extends CordovaPlugin {
                 Log.v(LOG_TAG, " excute VerifyCode: PhoneNumber=" + PhoneNumber);
                 Log.v(LOG_TAG, " excute VerifyCode: VerifyCode=" + VerifyCode);
                 SMSSDK.submitVerificationCode("86", PhoneNumber, VerifyCode);
-                JSONObject obj = new JSONObject();
-                obj.put("status",-1);
-                obj.put("message", "verify Sended");
-                PluginResult result = new PluginResult(PluginResult.Status.OK, obj);
-                result.setKeepCallback(true);
-                callbackContext.sendPluginResult(result);
+                return true;
             } catch (Exception e) {
                 Log.e(LOG_TAG, "execute: Got JSON Exception " + e.getMessage());
                 callbackContext.error(e.getMessage());
