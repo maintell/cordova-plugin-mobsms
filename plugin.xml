@@ -17,13 +17,26 @@
     <platform name="android">
         <config-file target="res/xml/config.xml" parent="/*">
             <feature name="mobsms" >
-                <param name="android-package" value="com.jlg.mobsms"/>
+                <param name="android-package" value="com.jlg.mobsms.mobsms"/>
             </feature>
         </config-file>
         <source-file src="src/android/mobsms.java" target-dir="src/com/jlg/mobsms" />
         <source-file src="src/android/MobCommons-2016.0303.1229.jar" target-dir="libs" />
         <source-file src="src/android/MobTools-2016.0303.1229.jar" target-dir="libs" />
         <source-file src="src/android/SMSSDK-2.0.2.jar" target-dir="libs" />
+        <source-file src="src/android/SMSSDK-2.0.2.aar" target-dir="libs" />
+		<config-file target="AndroidManifest.xml" parent="/manifest">
+            <uses-permission android:name="android.permission.READ_CONTACTS" />
+			<uses-permission android:name="android.permission.READ_PHONE_STATE" />
+			<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+			<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+			<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+			<uses-permission android:name="android.permission.INTERNET" />
+			<uses-permission android:name="android.permission.RECEIVE_SMS" />
+			<uses-permission android:name="android.permission.READ_SMS" />
+			<uses-permission android:name="android.permission.GET_TASKS" />
+			<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+		</config-file>
     </platform>
 
 

@@ -1,73 +1,181 @@
-var cordova = require('cordova'),
-    exec = require('cordova/exec');
+/*!
+ * Module dependencies.
+ */
 
-var STATUS_CRITICAL = 5;
-var STATUS_LOW = 20;
+var exec = cordova.require('cordova/exec');
 
-var Mobsms = function() {
-    this._level = null;
-    this._isPlugged = null;
-    // Create new event handlers on the window (returns a channel instance)
-    this.channels = {
-      mobsms_requeststatus:cordova.addWindowEventHandler("mobsms_requeststatus"),
-      mobsms_codestatus:cordova.addWindowEventHandler("mobsms_codestatus")
+/**
+ * mobsms constructor.
+ *
+ * @param {Object} options to initiate Push Notifications.
+ * @return {mobsms} instance that can be monitored and cancelled.
+ */
+
+var mobsms = function(options) {
+    this._handlers = {
+        'registration': [],
+        'notification': [],
+        'error': []
     };
-    for (var key in this.channels) {
-        this.channels[key].onHasSubscribersChange = Mobsms.onHasSubscribersChange;
+
+    // require options parameter
+    if (typeof options === 'undefined') {
+        throw new Error('The options argument is required.');
+    }
+
+    // store the options to this object instance
+    this.options = options;
+
+    // triggered on registration and notification
+    var that = this;
+    var success = function(result) {
+        if (result && typeof result.registrationId !== 'undefined') {
+            that.emit('registration', result);
+        } else if (result && result.additionalData && typeof result.additionalData.callback !== 'undefined') {
+            var executeFunctionByName = function(functionName, context /*, args */) {
+                var args = Array.prototype.slice.call(arguments, 2);
+                var namespaces = functionName.split('.');
+                var func = namespaces.pop();
+                for (var i = 0; i < namespaces.length; i++) {
+                    context = context[namespaces[i]];
+                }
+                return context[func].apply(context, args);
+            };
+
+            executeFunctionByName(result.additionalData.callback, window, result);
+        } else if (result) {
+            that.emit('notification', result);
+        }
+    };
+
+    // triggered on error
+    var fail = function(msg) {
+        var e = (typeof msg === 'string') ? new Error(msg) : msg;
+        that.emit('error', e);
+    };
+
+    // wait at least one process tick to allow event subscriptions
+    setTimeout(function() {
+        exec(success, fail, 'mobsms', 'INITIALIZE', [options]);
+    }, 10);
+};
+
+mobsms.prototype.RequestVerifyCode = function(successCallback, errorCallback, PhoneNumber) {
+    if (!errorCallback) { errorCallback = function() {}; }
+
+    if (typeof errorCallback !== 'function')  {
+        console.log('mobsms.RequestVerifyCode failure: failure parameter not a function');
+        return;
+    }
+
+    if (typeof successCallback !== 'function') {
+        console.log('mobsms.RequestVerifyCode failure: success callback parameter must be a function');
+        return;
+    }
+
+    exec(successCallback, errorCallback, 'mobsms', 'RequestVerifyCode', [{PhoneNumber: PhoneNumber}]);
+};
+
+mobsms.prototype.SubmitVerifyCode = function(successCallback, errorCallback, VerifyCode) {
+    if (!errorCallback) { errorCallback = function() {}; }
+
+    if (typeof errorCallback !== 'function')  {
+        console.log('mobsms.SubmitVerifyCode failure: failure parameter not a function');
+        return;
+    }
+
+    if (typeof successCallback !== 'function') {
+        console.log('mobsms.SubmitVerifyCode failure: success callback parameter must be a function');
+        return;
+    }
+
+    exec(successCallback, errorCallback, 'mobsms', 'RequestVerifyCode', [{VerifyCode: VerifyCode}]);
+};
+
+
+mobsms.prototype.on = function(eventName, callback) {
+    if (this._handlers.hasOwnProperty(eventName)) {
+        this._handlers[eventName].push(callback);
     }
 };
 
-function handlers() {
-    return mobsms.channels.mobsms_requeststatus.numHandlers +
-        mobsms.channels.mobsms_codestatus.numHandlers ;
-}
-
-/**
- * Event handlers for when callbacks get registered for the Mobsms.
- * Keep track of how many handlers we have so we can start and stop the native Mobsms listener
- * appropriately (and hopefully save on Mobsms life!).
- */
-//Mobsms.onHasSubscribersChange = function() {
-//  // If we just registered the first handler, make sure native listener is started.
-//  if (this.numHandlers === 1 && handlers() === 1) {
-//      exec(mobsms._status, mobsms._error, "Mobsms", "start", []);
-//  } else if (handlers() === 0) {
-//      exec(null, null, "Mobsms", "stop", []);
-//  }
-//};
-
-Mobsms.RequestVerifyCode = function(phone)
-  {
-         alert(2);
-       //exec(mobsms._requestcodeCallback, mobsms._error, "mobsms", "RequestVerifyCode", [phone]);
-  }
-
-  Mobsms.prototype._requestcodeCallback = function (info) {
-
-      if (info) {
-          cordova.fireWindowEvent("mobsms_requeststatus", info);
-      }
-  };
-
-Mobsms.SubmitVerifyCode = function(code)
-{
-     exec(mobsms._submitcodeCallback, mobsms._error, "mobsms", "SubmitVerifyCode", [code]);
-}
-
-Mobsms.prototype._submitcodeCallback = function (info) {
-    if (info) {
-        cordova.fireWindowEvent("mobsms_codestatus", info);
+mobsms.prototype.off = function (eventName, handle) {
+    if (this._handlers.hasOwnProperty(eventName)) {
+        var handleIndex = this._handlers[eventName].indexOf(handle);
+        if (handleIndex >= 0) {
+            this._handlers[eventName].splice(handleIndex, 1);
+        }
     }
 };
 
+mobsms.prototype.emit = function() {
+    var args = Array.prototype.slice.call(arguments);
+    var eventName = args.shift();
 
-/**
- * Error callback for Mobsms start
- */
-Mobsms.prototype._error = function(e) {
-    console.log("Error initializing Mobsms: " + e);
+    if (!this._handlers.hasOwnProperty(eventName)) {
+        return false;
+    }
+
+    for (var i = 0, length = this._handlers[eventName].length; i < length; i++) {
+        var callback = this._handlers[eventName][i];
+        if (typeof callback === 'function') {
+            callback.apply(undefined,args);
+        } else {
+            console.log('event handler: ' + eventName + ' must be a function');
+        }
+    }
+
+    return true;
 };
 
-var mobsms = new Mobsms(); // jshint ignore:line
+mobsms.prototype.finish = function(successCallback, errorCallback, id) {
+    if (!successCallback) { successCallback = function() {}; }
+    if (!errorCallback) { errorCallback = function() {}; }
+    if (!id) { id = 'handler'; }
 
-module.exports = mobsms;
+    if (typeof successCallback !== 'function') {
+        console.log('finish failure: success callback parameter must be a function');
+        return;
+    }
+
+    if (typeof errorCallback !== 'function')  {
+        console.log('finish failure: failure parameter not a function');
+        return;
+    }
+
+    exec(successCallback, errorCallback, 'mobsms', 'finish', [id]);
+};
+
+/*!
+ * Push Notification Plugin.
+ */
+
+module.exports = {
+    /**
+     * Register for Push Notifications.
+     *
+     * This method will instantiate a new copy of the mobsms object
+     * and start the registration process.
+     *
+     * @param {Object} options
+     * @return {mobsms} instance
+     */
+
+    init: function(options) {
+        return new mobsms(options);
+    },
+
+//    hasPermission: function(successCallback, errorCallback) {
+//        exec(successCallback, errorCallback, 'mobsms', 'hasPermission', []);
+//    },
+
+    /**
+     * mobsms Object.
+     *
+     * Expose the mobsms object for direct use
+     * and testing. Typically, you should use the
+     * .init helper method.
+     */
+
+    mobsms: mobsms
+};

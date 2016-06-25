@@ -7,15 +7,21 @@ import org.apache.cordova.CordovaWebView;
 import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
 import org.json.JSONException;
+import org.json.JSONObject;
 import android.content.Context;
-import android.telephony.TelephonyManager;
-import android.text.TextUtils;
+import android.content.SharedPreferences;
+import android.os.Bundle;
 import android.util.Log;
 
-import org.json.JSONObject;
+
 import cn.smssdk.EventHandler;
 import cn.smssdk.OnSendMessageHandler;
 import cn.smssdk.SMSSDK;
+
+import java.io.IOException;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Iterator;
 
 /**
  * This class provides access to mobsms on the device.
@@ -24,131 +30,365 @@ public class mobsms extends CordovaPlugin {
 
 // 填写从短信SDK应用后台注册得到的APPKEY
 	//此APPKEY仅供测试使用，且不定期失效，请到mob.com后台申请正式APPKEY
-	private static String APPKEY = "f3fc6baa9ac4";
+	private String APPKEY = "1416328677438";//"f3fc6baa9ac4";
 
 	// 填写从短信SDK应用后台注册得到的APPSECRET
-	private static String APPSECRET = "7f3dedcb36d92deebcb373af921d635a";
-	
-	private static String PhoneNumber = "";
-	private static String VerifyCode = "";
+	private String APPSECRET = "363cfcee4b1403aa04522a5a6998c82e";//"7f3dedcb36d92deebcb373af921d635a";
+
+	private String PhoneNumber = "";
+	private String VerifyCode = "";
 
 
-    private CallbackContext requestcodeCallbackContext = null;
-    private CallbackContext submitcodeCallbackContext = null;
+    private static String INITIALIZE = "INITIALIZE";
+    private static String RequestVerifyCode = "RequestVerifyCode";
+    private static String SubmitVerifyCode = "SubmitVerifyCode";
+    //private static String UNREGISTER = "UNREGISTER";
+    public static final String LOG_TAG = "jlgMobSMSPlugin";
+    private static CallbackContext MobSMSContext;
 
-    private OnSendMessageHandler osmHandler = new OnSendMessageHandler() {
+    private static CallbackContext RequestVerifyCodeContext;
+    private static CallbackContext SubmitVerifyCodeContext;
+    private static CordovaWebView gWebView;
+    private static Bundle gCachedExtras = null;
+    private static boolean gForeground = false;
+
+    /**
+     * Gets the application context from cordova's main activity.
+     * @return the application context
+     */
+    private Context getApplicationContext() {
+        return this.cordova.getActivity().getApplicationContext();
+    }
+
+    EventHandler SMSSDKEeventHandler = new EventHandler(){
         @Override
-        public boolean onSendMessage(String s, String s1) {
-            Log.d("OnSendMessageHandler",s+"|"+s1);
-            return true;
+        public void afterEvent(int event, int result, Object data) {
+            super.afterEvent(event, result, data);
+            if (event == SMSSDK.EVENT_SUBMIT_VERIFICATION_CODE) {
+                //提交验证码成功
+                if (result == SMSSDK.RESULT_COMPLETE) {
+                    //回调完成
+                    SubmitVerifyCodeContext.success();
+                } else {
+                    PluginResult pluginResult = new PluginResult(PluginResult.Status.ERROR, ((Throwable) data).getMessage());
+                    pluginResult.setKeepCallback(true);
+                    if (SubmitVerifyCodeContext != null) {
+                        SubmitVerifyCodeContext.sendPluginResult(pluginResult);
+                    }
+                }
+            } else if (event == SMSSDK.EVENT_GET_VERIFICATION_CODE) {
+
+                if (result == SMSSDK.RESULT_COMPLETE) {
+                    RequestVerifyCodeContext.success();
+                } else {
+                    PluginResult pluginResult = new PluginResult(PluginResult.Status.ERROR, ((Throwable) data).getMessage());
+                    pluginResult.setKeepCallback(true);
+                    if (RequestVerifyCodeContext != null) {
+                        RequestVerifyCodeContext.sendPluginResult(pluginResult);
+                    }
+
+                }
+            } else if (event == SMSSDK.EVENT_GET_SUPPORTED_COUNTRIES) {
+                //返回支持发送验证码的国家列表
+                if (result == SMSSDK.RESULT_COMPLETE) {
+                    //回调完成
+                    MobSMSContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, data.toString()));
+                } else {
+                    sendError( ((Throwable) data).getMessage());
+                }
+            }
         }
     };
 
-
-    public void initialize(CordovaInterface cordova, CordovaWebView webView) {
-        super.initialize(cordova, webView);
-        SMSSDK.initSDK(cordova.getActivity().getApplicationContext(), APPKEY , APPSECRET);
-        EventHandler eh=new EventHandler(){
-            @Override
-            public void afterEvent(int event, int result, Object data) {
-                if (result == SMSSDK.RESULT_COMPLETE) {
-                    //回调完成
-                    if (event == SMSSDK.EVENT_SUBMIT_VERIFICATION_CODE) {
-                        //提交验证码成功
-                        PluginResult submitcodeResult = new PluginResult(PluginResult.Status.OK, data.toString());
-                        submitcodeResult.setKeepCallback(true);
-                        submitcodeCallbackContext.sendPluginResult(submitcodeResult);
-                    }else if (event == SMSSDK.EVENT_GET_VERIFICATION_CODE){
-                        //获取验证码成功
-                        PluginResult requestcodeResult = new PluginResult(PluginResult.Status.OK, data.toString());
-                        requestcodeResult.setKeepCallback(true);
-                        requestcodeCallbackContext.sendPluginResult(requestcodeResult);
-
-                    }else if (event ==SMSSDK.EVENT_GET_SUPPORTED_COUNTRIES){
-                        //返回支持发送验证码的国家列表
+    @Override
+    public boolean execute(final String action, final JSONArray data, final CallbackContext callbackContext) {
+        Log.v(LOG_TAG, "execute: action=" + action);
+        gWebView = this.webView;
+        if (INITIALIZE.equals(action)) {
+            //cordova.getThreadPool().execute(new Runnable() {
+                //public void run() {
+                    MobSMSContext = callbackContext;
+                    JSONObject jo = null;
+                    Log.v(LOG_TAG, "execute: data=" + data.toString());
+                    try {
+                        jo = data.getJSONObject(0).getJSONObject("MobConfig");
+                        Log.v(LOG_TAG, "execute: jo=" + jo.toString());
+                        APPKEY = jo.getString("APPKEY");
+                        APPSECRET = jo.getString("APPSECRET");
+                        Log.v(LOG_TAG, "execute: APPKEY=" + APPKEY);
+                        Log.v(LOG_TAG, "execute: APPSECRET=" + APPSECRET);
+                        SMSSDK.initSDK(getApplicationContext(),APPKEY,APPSECRET);//初始化SDK
+                        SMSSDK.registerEventHandler(SMSSDKEeventHandler);//事件回调
+                        callbackContext.success();//无错返回
+                        return true;
+                    } catch (JSONException e) {
+                        Log.e(LOG_TAG, "execute: Got JSON Exception " + e.getMessage());
+                        callbackContext.error(e.getMessage());
                     }
-                }else{
-                    ((Throwable)data).printStackTrace();
-
-                }
+               // }
+           // });
+        }else if (RequestVerifyCode.equals(action)) {//请求验证码
+            try {
+                RequestVerifyCodeContext = callbackContext;
+                //PhoneNumber = data.toString();
+                JSONObject jo = data.getJSONObject(0);
+                PhoneNumber = jo.getString("PhoneNumber");
+                Log.v(LOG_TAG, " excute RequestVerifyCode: PhoneNumber=" + PhoneNumber);
+                SMSSDK.getVerificationCode("86",PhoneNumber);
+            } catch (JSONException e) {
+                Log.e(LOG_TAG, "execute: Got JSON Exception " + e.getMessage());
+                callbackContext.error(e.getMessage());
             }
-        };
-        SMSSDK.registerEventHandler(eh); //注册短信回调
-    }
-    /**
-     * Constructor.
-     */
-    public mobsms() {
-		
-    }
-
-    /**
-     * Executes the request and returns PluginResult.
-     *
-     * @param action            The action to execute.
-     * @param args              JSONArray of arguments for the plugin.
-     * @param callbackContext   The callback context used when calling back into JavaScript.
-     * @return                  True when the action was valid, false otherwise.
-     */
-    public boolean execute(String action, JSONArray args, CallbackContext callbackContext) throws JSONException {
-        if (action.equals("RequestVerifyCode")) {
-            requestcodeCallbackContext = callbackContext;
-            this.RequestVerifyCode(args.getJSONObject(0).toString());
-        }
-        else if(action.equals("SubmitVerifyCode"))
-        {
-            submitcodeCallbackContext = callbackContext;
-            this.SubmitVerifyCode(args.getJSONObject(0).toString());
-        }
-        else if (action.equals("GetVerifyCode")) {
-            JSONObject r = new JSONObject();
-            r.put("Phone", mobsms.PhoneNumber);
-            r.put("VerifyCode", mobsms.VerifyCode);           
-            callbackContext.success(r);
-        }
-        else {
+        }else if (SubmitVerifyCode.equals(action)) {//验证验证码
+            try {
+                SubmitVerifyCodeContext = callbackContext;
+                JSONObject jo = data.getJSONObject(0);
+                VerifyCode = jo.getString("VerifyCode");
+                Log.v(LOG_TAG, " excute VerifyCode: PhoneNumber=" + PhoneNumber);
+                Log.v(LOG_TAG, " excute VerifyCode: VerifyCode=" + VerifyCode);
+                SMSSDK.submitVerificationCode("86", PhoneNumber, VerifyCode);
+                callbackContext.success();
+            } catch (Exception e) {
+                Log.e(LOG_TAG, "execute: Got JSON Exception " + e.getMessage());
+                callbackContext.error(e.getMessage());
+            }
+        } else {
+            Log.e(LOG_TAG, "Invalid action : " + action);
+            callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.INVALID_ACTION));
             return false;
         }
         return true;
     }
 
-    public void RequestVerifyCode(String Phone) {
-        SMSSDK.getVerificationCode("86", Phone.trim(), osmHandler);
+    public static void sendEvent(JSONObject _json) {
+        PluginResult pluginResult = new PluginResult(PluginResult.Status.OK, _json);
+        pluginResult.setKeepCallback(true);
+        if (MobSMSContext != null) {
+            MobSMSContext.sendPluginResult(pluginResult);
+        }
     }
 
-    public void SubmitVerifyCode(String code) {
-        SMSSDK.submitVerificationCode("86",mobsms.PhoneNumber, code);
+    public static void sendError(String message) {
+        PluginResult pluginResult = new PluginResult(PluginResult.Status.ERROR, message);
+        pluginResult.setKeepCallback(true);
+        if (MobSMSContext != null) {
+            MobSMSContext.sendPluginResult(pluginResult);
+        }
     }
 
+    /*
+     * Sends the pushbundle extras to the client application.
+     * If the client application isn't currently active, it is cached for later processing.
+     */
+    public static void sendExtras(Bundle extras) {
+        if (extras != null) {
+            if (gWebView != null) {
+                //sendEvent(convertBundleToJson(extras));
+            } else {
+                Log.v(LOG_TAG, "sendExtras: caching extras to send at a later time.");
+                gCachedExtras = extras;
+            }
+        }
+    }
 
-
-
-//    private String[] getCurrentCountry() {
-//        String mcc = getMCC();
-//        String[] country = null;
-//        if (!TextUtils.isEmpty(mcc)) {
-//            country = SMSSDK.getCountryByMCC(mcc);
+//    public static void setApplicationIconBadgeNumber(Context context, int badgeCount) {
+//        if (badgeCount > 0) {
+//            //ShortcutBadger.applyCount(context, badgeCount);
+//        } else {
+//            //ShortcutBadger.removeCount(context);
 //        }
+//    }
+
+
+    //    public void initialize(CordovaInterface cordova, CordovaWebView webView) {
+//        super.initialize(cordova, webView);
+//        SMSSDK.initSDK(cordova.getActivity().getApplicationContext(), APPKEY , APPSECRET);
+//        EventHandler eh=new EventHandler(){
+//            @Override
+//            public void afterEvent(int event, int result, Object data) {
+//                if (result == SMSSDK.RESULT_COMPLETE) {
+//                    //回调完成
+//                    if (event == SMSSDK.EVENT_SUBMIT_VERIFICATION_CODE) {
+//                        //提交验证码成功
+//                        PluginResult submitcodeResult = new PluginResult(PluginResult.Status.OK, data.toString());
+//                        submitcodeResult.setKeepCallback(true);
+//                        submitcodeCallbackContext.sendPluginResult(submitcodeResult);
+//                    }else if (event == SMSSDK.EVENT_GET_VERIFICATION_CODE){
+//                        //获取验证码成功
+//                        PluginResult requestcodeResult = new PluginResult(PluginResult.Status.OK, data.toString());
+//                        requestcodeResult.setKeepCallback(true);
+//                        requestcodeCallbackContext.sendPluginResult(requestcodeResult);
 //
-//        if (country == null) {
-//            Log.w("SMSSDK", "no country found by MCC: " + mcc);
-//            country = SMSSDK.getCountry(DEFAULT_COUNTRY_ID);
+//                    }else if (event ==SMSSDK.EVENT_GET_SUPPORTED_COUNTRIES){
+//                        //返回支持发送验证码的国家列表
+//                    }
+//                }else{
+//                    ((Throwable)data).printStackTrace();
+//
+//                }
+//            }
+//        };
+//        SMSSDK.registerEventHandler(eh); //注册短信回调
+//    }
+
+
+    //        if (action.equals("RequestVerifyCode")) {
+//            requestcodeCallbackContext = callbackContext;
+//            this.RequestVerifyCode(args.getJSONObject(0).toString());
 //        }
-//        return country;
+//        else if(action.equals("SubmitVerifyCode"))
+//        {
+//            submitcodeCallbackContext = callbackContext;
+//            this.SubmitVerifyCode(args.getJSONObject(0).toString());
+//        }
+//        else if (action.equals("GetVerifyCode")) {
+//            JSONObject r = new JSONObject();
+//            r.put("Phone", mobsms.PhoneNumber);
+//            r.put("VerifyCode", mobsms.VerifyCode);
+//            callbackContext.success(r);
+//        }
+//        else {
+//            return false;
+//        }
+//        return true;
+
+
+    @Override
+    public void initialize(CordovaInterface cordova, CordovaWebView webView) {
+        super.initialize(cordova, webView);
+        gForeground = true;
+    }
+
+//    @Override
+//    public void onPause(boolean multitasking) {
+//        super.onPause(multitasking);
+//        gForeground = false;
+//
+//        SharedPreferences prefs = getApplicationContext().getSharedPreferences(COM_ADOBE_PHONEGAP_PUSH, Context.MODE_PRIVATE);
+//        if (prefs.getBoolean(CLEAR_NOTIFICATIONS, true)) {
+//            clearAllNotifications();
+//        }
+//    }
+
+    @Override
+    public void onResume(boolean multitasking) {
+        super.onResume(multitasking);
+        gForeground = true;
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        gForeground = false;
+        gWebView = null;
+    }
+
+//    private void clearAllNotifications() {
+//        final NotificationManager notificationManager = (NotificationManager) cordova.getActivity().getSystemService(Context.NOTIFICATION_SERVICE);
+//        notificationManager.cancelAll();
+//    }
+
+//    private void subscribeToTopics(JSONArray topics, String registrationToken) {
+//        if (topics != null) {
+//            String topic = null;
+//            for (int i=0; i<topics.length(); i++) {
+//                try {
+//                    topic = topics.optString(i, null);
+//                    if (topic != null) {
+//                        Log.d(LOG_TAG, "Subscribing to topic: " + topic);
+//                        GcmPubSub.getInstance(getApplicationContext()).subscribe(registrationToken, "/topics/" + topic, null);
+//                    }
+//                } catch (IOException e) {
+//                    Log.e(LOG_TAG, "Failed to subscribe to topic: " + topic, e);
+//                }
+//            }
+//        }
 //    }
 //
-//
-//    private String getMCC() {
-//        TelephonyManager tm = (TelephonyManager) activity.getSystemService(Context.TELEPHONY_SERVICE);
-//        // 返回当前手机注册的网络运营商所在国家的MCC+MNC. 如果没注册到网络就为空.
-//        String networkOperator = tm.getNetworkOperator();
-//        if (!TextUtils.isEmpty(networkOperator)) {
-//            return networkOperator;
+//    private void unsubscribeFromTopics(JSONArray topics, String registrationToken) {
+//        if (topics != null) {
+//            String topic = null;
+//            for (int i=0; i<topics.length(); i++) {
+//                try {
+//                    topic = topics.optString(i, null);
+//                    if (topic != null) {
+//                        Log.d(LOG_TAG, "Unsubscribing to topic: " + topic);
+//                        GcmPubSub.getInstance(getApplicationContext()).unsubscribe(registrationToken, "/topics/" + topic);
+//                    }
+//                } catch (IOException e) {
+//                    Log.e(LOG_TAG, "Failed to unsubscribe to topic: " + topic, e);
+//                }
+//            }
 //        }
-//
-//        // 返回SIM卡运营商所在国家的MCC+MNC. 5位或6位. 如果没有SIM卡返回空
-//        return tm.getSimOperator();
 //    }
-    
+
+    /*
+     * serializes a bundle to JSON.
+     */
+//    private static JSONObject convertBundleToJson(Bundle extras) {
+//        Log.d(LOG_TAG, "convert extras to json");
+//        try {
+//            JSONObject json = new JSONObject();
+//            JSONObject additionalData = new JSONObject();
+//
+//            // Add any keys that need to be in top level json to this set
+//            HashSet<String> jsonKeySet = new HashSet();
+//            Collections.addAll(jsonKeySet, TITLE,MESSAGE,COUNT,SOUND,IMAGE);
+//
+//            Iterator<String> it = extras.keySet().iterator();
+//            while (it.hasNext()) {
+//                String key = it.next();
+//                Object value = extras.get(key);
+//
+//                Log.d(LOG_TAG, "key = " + key);
+//
+//                if (jsonKeySet.contains(key)) {
+//                    json.put(key, value);
+//                }
+//                else if (key.equals(COLDSTART)) {
+//                    additionalData.put(key, extras.getBoolean(COLDSTART));
+//                }
+//                else if (key.equals(FOREGROUND)) {
+//                    additionalData.put(key, extras.getBoolean(FOREGROUND));
+//                }
+//                else if ( value instanceof String ) {
+//                    String strValue = (String)value;
+//                    try {
+//                        // Try to figure out if the value is another JSON object
+//                        if (strValue.startsWith("{")) {
+//                            additionalData.put(key, new JSONObject(strValue));
+//                        }
+//                        // Try to figure out if the value is another JSON array
+//                        else if (strValue.startsWith("[")) {
+//                            additionalData.put(key, new JSONArray(strValue));
+//                        }
+//                        else {
+//                            additionalData.put(key, value);
+//                        }
+//                    } catch (Exception e) {
+//                        additionalData.put(key, value);
+//                    }
+//                }
+//            } // while
+//
+//            json.put(ADDITIONAL_DATA, additionalData);
+//            Log.v(LOG_TAG, "extrasToJSON: " + json.toString());
+//
+//            return json;
+//        }
+//        catch( JSONException e) {
+//            Log.e(LOG_TAG, "extrasToJSON: JSON exception");
+//        }
+//        return null;
+//    }
+
+    public static boolean isInForeground() {
+        return gForeground;
+    }
+
+    public static boolean isActive() {
+        return gWebView != null;
+    }
+
    
 }
