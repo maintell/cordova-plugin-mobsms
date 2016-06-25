@@ -66,27 +66,38 @@ public class mobsms extends CordovaPlugin {
             super.afterEvent(event, result, data);
             if (event == SMSSDK.EVENT_SUBMIT_VERIFICATION_CODE) {
                 //提交验证码成功
-                if (result == SMSSDK.RESULT_COMPLETE) {
-                    //回调完成
-                    SubmitVerifyCodeContext.success();
-                } else {
-                    PluginResult pluginResult = new PluginResult(PluginResult.Status.ERROR, ((Throwable) data).getMessage());
-                    pluginResult.setKeepCallback(true);
-                    if (SubmitVerifyCodeContext != null) {
-                        SubmitVerifyCodeContext.sendPluginResult(pluginResult);
+                try {
+                    if (result == SMSSDK.RESULT_COMPLETE) {
+                        //SubmitVerifyCodeContext.success();
+                        JSONObject obj = new JSONObject();
+                        obj.put("status",0);
+                        obj.put("message", "verify OK");
+                        PluginResult Pluginresult = new PluginResult(PluginResult.Status.OK, obj);
+                        Pluginresult.setKeepCallback(true);
+                        SubmitVerifyCodeContext.sendPluginResult(Pluginresult);
+
+                    } else {
+                        SubmitVerifyCodeContext.error(((Throwable) data).getMessage());
                     }
+                } catch (JSONException e) {
+                    SubmitVerifyCodeContext.error(e.getMessage());
                 }
             } else if (event == SMSSDK.EVENT_GET_VERIFICATION_CODE) {
+                try {
+                    if (result == SMSSDK.RESULT_COMPLETE) {
 
-                if (result == SMSSDK.RESULT_COMPLETE) {
-                    RequestVerifyCodeContext.success();
-                } else {
-                    PluginResult pluginResult = new PluginResult(PluginResult.Status.ERROR, ((Throwable) data).getMessage());
-                    pluginResult.setKeepCallback(true);
-                    if (RequestVerifyCodeContext != null) {
-                        RequestVerifyCodeContext.sendPluginResult(pluginResult);
+                        JSONObject obj = new JSONObject();
+                        obj.put("status",0);
+                        obj.put("message", "request OK");
+                        PluginResult Pluginresult = new PluginResult(PluginResult.Status.OK, obj);
+                        Pluginresult.setKeepCallback(true);
+                        RequestVerifyCodeContext.sendPluginResult(Pluginresult);
+                        //RequestVerifyCodeContext.success();
+                    } else {
+                        RequestVerifyCodeContext.error(((Throwable) data).getMessage());
                     }
-
+                } catch (JSONException e) {
+                    RequestVerifyCodeContext.error(e.getMessage());
                 }
             } else if (event == SMSSDK.EVENT_GET_SUPPORTED_COUNTRIES) {
                 //返回支持发送验证码的国家列表
@@ -135,6 +146,12 @@ public class mobsms extends CordovaPlugin {
                 PhoneNumber = jo.getString("PhoneNumber");
                 Log.v(LOG_TAG, " excute RequestVerifyCode: PhoneNumber=" + PhoneNumber);
                 SMSSDK.getVerificationCode("86",PhoneNumber);
+                JSONObject obj = new JSONObject();
+                obj.put("status",-1);
+                obj.put("message", "Request Sended");
+                PluginResult result = new PluginResult(PluginResult.Status.OK, obj);
+                result.setKeepCallback(true);
+                callbackContext.sendPluginResult(result);
             } catch (JSONException e) {
                 Log.e(LOG_TAG, "execute: Got JSON Exception " + e.getMessage());
                 callbackContext.error(e.getMessage());
@@ -147,7 +164,12 @@ public class mobsms extends CordovaPlugin {
                 Log.v(LOG_TAG, " excute VerifyCode: PhoneNumber=" + PhoneNumber);
                 Log.v(LOG_TAG, " excute VerifyCode: VerifyCode=" + VerifyCode);
                 SMSSDK.submitVerificationCode("86", PhoneNumber, VerifyCode);
-                callbackContext.success();
+                JSONObject obj = new JSONObject();
+                obj.put("status",-1);
+                obj.put("message", "verify Sended");
+                PluginResult result = new PluginResult(PluginResult.Status.OK, obj);
+                result.setKeepCallback(true);
+                callbackContext.sendPluginResult(result);
             } catch (Exception e) {
                 Log.e(LOG_TAG, "execute: Got JSON Exception " + e.getMessage());
                 callbackContext.error(e.getMessage());
